@@ -15,8 +15,8 @@ default = []
 [dependencies]
 log = "0.4"
 cfg-if = "1.0"
-memory_addr = { path = "../../crates/memory_addr" }
-lazy_init = { path = "../../crates/lazy_init" ,optional = true }
+memory_addr = { git = "https://github.com/Starry-OS/memory_addr.git" }
+lazy_init = { git = "https://github.com/Starry-OS/lazy_init.git" ,optional = true }
 static_assertions = "1.1.0"
 numeric-enum-macro = { git = "https://github.com/mexus/numeric-enum-macro" }
 
