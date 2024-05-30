@@ -2,8 +2,9 @@
 name = "taskctx"
 version = "0.1.0"
 edition = "2021"
-keywords = ["Starry"]
-
+keywords = ["Starry", "context"]
+authors = ["Youjie Zheng <zyj578335934@gmail.com>"]
+description = "A crate to define the basic task context, used for task scheduling."
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
