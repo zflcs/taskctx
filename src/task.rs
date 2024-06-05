@@ -42,28 +42,6 @@ impl Default for TaskId {
         Self::new()
     }
 }
-/// The possible states of a task.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-#[allow(missing_docs)]
-pub enum TaskState {
-    Running = 1,
-    Ready = 2,
-    Blocked = 3,
-    Exited = 4,
-}
-impl From<u8> for TaskState {
-    #[inline]
-    fn from(state: u8) -> Self {
-        match state {
-            1 => Self::Running,
-            2 => Self::Ready,
-            3 => Self::Blocked,
-            4 => Self::Exited,
-            _ => unreachable!(),
-        }
-    }
-}
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 #[allow(non_camel_case_types)]
@@ -141,9 +119,6 @@ pub struct TaskInner {
     /// For Monolithic Kernel, it points to the function that
     /// will return to the user mode.
     entry: Option<*mut dyn FnOnce()>,
-
-    /// Task state
-    state: AtomicU8,
 
     #[cfg(feature = "preempt")]
     /// Whether the task needs to be rescheduled
@@ -551,7 +526,6 @@ impl TaskInner {
             is_idle: false,
             is_init: false,
             entry: None,
-            state: AtomicU8::new(TaskState::Ready as u8),
             #[cfg(feature = "preempt")]
             need_resched: AtomicBool::new(false),
             #[cfg(feature = "preempt")]
@@ -620,36 +594,6 @@ impl TaskInner {
         t
     }
 
-    #[inline]
-    /// the state of the task
-    pub fn state(&self) -> TaskState {
-        self.state.load(Ordering::Acquire).into()
-    }
-
-    #[inline]
-    /// set the state of the task
-    pub fn set_state(&self, state: TaskState) {
-        self.state.store(state as u8, Ordering::Release)
-    }
-
-    /// Whether the task is running
-    #[inline]
-    pub fn is_running(&self) -> bool {
-        matches!(self.state(), TaskState::Running)
-    }
-
-    /// Whether the task is ready to be scheduled
-    #[inline]
-    pub fn is_ready(&self) -> bool {
-        matches!(self.state(), TaskState::Ready)
-    }
-
-    /// Whether the task is blocked
-    #[inline]
-    pub fn is_blocked(&self) -> bool {
-        matches!(self.state(), TaskState::Blocked)
-    }
-
     /// Whether the task has been inited
     #[inline]
     pub const fn is_init(&self) -> bool {
@@ -679,8 +623,8 @@ impl TaskInner {
     /// Whether the task can be preempted
     #[inline]
     #[cfg(feature = "preempt")]
-    pub fn can_preempt(&self, current_disable_count: usize) -> bool {
-        self.preempt_disable_count.load(Ordering::Acquire) == current_disable_count
+    pub fn can_preempt(&self) -> bool {
+        self.preempt_disable_count.load(Ordering::Acquire) == 0
     }
 
     /// Disable the preemption
@@ -763,7 +707,6 @@ impl fmt::Debug for TaskInner {
         f.debug_struct("TaskInner")
             .field("id", &self.id)
             .field("name", &self.name)
-            .field("state", &self.state())
             .finish()
     }
 }
