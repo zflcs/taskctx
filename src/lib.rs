@@ -28,8 +28,13 @@ pub use stat::*;
 cfg_if::cfg_if! {
     if #[cfg(feature = "multitask")] {
         mod kstack;
-        use kstack::*;mod task;
+        use kstack::*;
+        mod task;
         pub use task::*;
+        #[cfg(feature = "coroutine")]
+        mod waker;
+        #[cfg(feature = "coroutine")]
+        pub use waker::*;
     }
 }
 

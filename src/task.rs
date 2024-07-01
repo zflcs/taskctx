@@ -12,6 +12,8 @@ use core::{
     sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicU8, AtomicUsize, Ordering},
 };
 use memory_addr::{align_up_4k, VirtAddr};
+#[cfg(feature = "coroutine")]
+use core::future::Future;
 
 /// A unique identifier for a thread.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -118,6 +120,9 @@ pub struct TaskInner {
     ///
     /// For Monolithic Kernel, it points to the function that
     /// will return to the user mode.
+    /// 
+    /// For a coroutine, it points to the function that 
+    /// will run the actural `future``.
     entry: Option<*mut dyn FnOnce()>,
 
     #[cfg(feature = "preempt")]
@@ -187,6 +192,18 @@ pub struct TaskInner {
     #[cfg(feature = "monolithic")]
     /// Whether the task is a thread which is vforked by another task
     pub is_vforked_child: AtomicBool,
+
+    #[cfg(feature = "coroutine")]
+    /// Whether the task is a coroutine
+    is_coroutine: bool,
+
+    #[cfg(feature = "coroutine")]
+    /// The actural content of the future
+    future: Option<*mut (dyn Future<Output = i32> + 'static + Send + Sync)>,
+
+    #[cfg(feature = "coroutine")]
+    /// Wake function
+    wake_fn: Option<*mut (dyn FnOnce() + 'static)>,
 }
 
 unsafe impl Send for TaskInner {}
@@ -270,6 +287,8 @@ impl TaskInner {
         name: String,
         stack_size: usize,
         #[cfg(feature = "tls")] tls_area: (usize, usize),
+        #[cfg(feature = "coroutine")] future: impl Future<Output = i32> + 'static + Send + Sync,
+        #[cfg(feature = "coroutine")] wake_fn: impl FnOnce() + Send + 'static
     ) -> TaskInner
     where
         F: FnOnce() + Send + 'static,
@@ -282,7 +301,11 @@ impl TaskInner {
         );
         log::debug!("new task: {}", t.id_name());
         let kstack = TaskStack::alloc(align_up_4k(stack_size));
-
+        #[cfg(feature = "coroutine")]
+        {
+            t.future = Some(Box::into_raw(Box::new(future)));
+            t.wake_fn = Some(Box::into_raw(Box::new(wake_fn)));
+        }
         t.entry = Some(Box::into_raw(Box::new(entry)));
 
         t.kstack = Some(kstack);
@@ -568,6 +591,12 @@ impl TaskInner {
 
             #[cfg(feature = "monolithic")]
             is_vforked_child: AtomicBool::new(false),
+            #[cfg(feature = "coroutine")]
+            is_coroutine: false,
+            #[cfg(feature = "coroutine")]
+            future: None,
+            #[cfg(feature = "coroutine")]
+            wake_fn: None,
         }
     }
 
@@ -714,5 +743,34 @@ impl fmt::Debug for TaskInner {
 impl Drop for TaskInner {
     fn drop(&mut self) {
         log::debug!("task drop: {}", self.id_name());
+        #[cfg(feature = "coroutine")]
+        {
+            let future = self.get_future();
+            let _ = unsafe { Box::from_raw(future.unwrap()) };
+            let wake_fn = self.get_wake_fn();
+            let _ = unsafe { Box::from_raw(wake_fn.unwrap()) };
+        }
+    }
+}
+
+#[cfg(feature = "coroutine")]
+impl TaskInner {
+
+    /// Whether the task is a coroutine
+    #[inline]
+    pub const fn is_coroutine(&self) -> bool {
+        self.is_coroutine
+    }
+
+    /// Get the future
+    #[inline]
+    pub fn get_future(&self) -> Option<*mut (dyn Future<Output = i32> + 'static + Send + Sync)> {
+        self.future
+    }
+
+    /// Get the wake_fn
+    #[inline]
+    pub fn get_wake_fn(&mut self) -> Option<*mut dyn FnOnce()> {
+        self.wake_fn
     }
 }
